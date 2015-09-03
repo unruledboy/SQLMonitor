@@ -35,25 +35,25 @@ Step 3: accessible on any client (including mobile phones).
 
 # Features
 
-Tracking sql server status, notify query execution and server status
-Version control, tracking table structure, index, trigger, view, function, stored procedure versions
-Server summary
-Analysis, expensive queries, thanks: http://sqlmonitor.codeplex.com/
-Performance Charting
-Object explorer, see object scripts, including tables, view dependencies.
-Process Visualizer, thanks: http://www.codeproject.com/Articles/18378/Organization-Chart-Generator
-Detect dead loop and memory leakage
-Query, table data view
-Database shrink/log truncate/backup/detach/attach
-Syntax Color Highlighting, thanks: http://www.icsharpcode.net/
-Text comparison, thanks: http://www.codeproject.com/KB/recipes/diffengine.aspx
-Object/script search
-Support processes and jobs
-Keep tracking actual running sql query
-Automatically load lan sql server instances
-Auto refresh
-Auto update notification
-Grid grouping, thanks OutlookGrid: http://www.codeproject.com/Articles/14388/OutlookGrid-grouping-and-arranging-items-in-Outloo
+* Tracking sql server status, notify query execution and server status
+* Version control, tracking table structure, index, trigger, view, function, stored procedure versions
+* Server summary
+* Analysis, expensive queries, thanks: http://sqlmonitor.codeplex.com/
+* Performance Charting
+* Object explorer, see object scripts, including tables, view dependencies.
+* Process Visualizer, thanks: http://www.codeproject.com/Articles/18378/Organization-Chart-Generator
+* Detect dead loop and memory leakage
+* Query, table data view
+* Database shrink/log truncate/backup/detach/attach
+* Syntax Color Highlighting, thanks: http://www.icsharpcode.net/
+* Text comparison, thanks: http://www.codeproject.com/KB/recipes/diffengine.aspx
+* Object/script search
+* Support processes and jobs
+* Keep tracking actual running sql query
+* Automatically load lan sql server instances
+* Auto refresh
+* Auto update notification
+* Grid grouping, thanks OutlookGrid: http://www.codeproject.com/Articles/14388/OutlookGrid-grouping-and-arranging-items-in-Outloo
 
 
 # Screen Shots
