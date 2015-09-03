@@ -1,3 +1,10 @@
+# Database Stack
+Want to know the comprehensive database technology stack, including MS SQL Server, Azure etc? Check out Database Stack:
+
+https://github.com/unruledboy/DatabaseStack
+
+
+
 # SQL Monitor
 SQL Server monitor, manages sql server performance, monitor sql server processes and jobs, analyze performance, analyse system, object version control, view executing sql query, kill process / job, object explorer, database shrink/log truncate/backup/detach/attach.
 
