@@ -32,6 +32,11 @@ namespace Xnlab.SQLMon.Common
         {
             using (var connection = CreateNewConnection(info))
             {
+                if (info.IsAzure && !string.IsNullOrEmpty(info.Database))
+                {
+                    connection.Open();
+                    connection.ChangeDatabase(info.Database);
+                }
                 var result = new StringBuilder();
                 connection.InfoMessage += (s, e) => { result.AppendLine(e.Message); };
                 var command = new SqlCommand(sql, connection);

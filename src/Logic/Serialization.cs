@@ -180,7 +180,7 @@ namespace Xnlab.SQLMon.Logic
 
         public void Serialize<T>(T graph)
         {
-            Serialize<T>(graph, false);
+            Serialize(graph, false);
         }
 
         public void Serialize<T>(T graph, bool isUpdate)

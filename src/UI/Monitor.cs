@@ -66,7 +66,6 @@ namespace Xnlab.SQLMon.UI
         private const string CommandDelete = "Delete";
         private const string CommandVisualize = "Visualize";
         private const int ResultSamplePrefix = 15;
-        private const int ResultSampleCount = 100;
         private const string AnalysisColumnRule = "Rule";
         private const string AnalysisColumnObject = "Object";
         private const string AnalysisColumnReference = "Reference";
@@ -85,9 +84,9 @@ namespace Xnlab.SQLMon.UI
 
         private WorkModes _currentWorkMode = WorkModes.Summary;
 
-        private Timer _tmrActivitiesRefresh = null;
-        private readonly Timer _tmrStartup = null;
-        private bool _isUpdating = false;
+        private Timer _tmrActivitiesRefresh;
+        private readonly Timer _tmrStartup;
+        private bool _isUpdating;
         private ObjectModes _currentObjectMode = ObjectModes.None;
         private ObjectModes _previousObjectMode = ObjectModes.None;
         private string _currentDatabase = string.Empty;
@@ -96,19 +95,19 @@ namespace Xnlab.SQLMon.UI
         private string _currentObjectType = string.Empty;
         private string _previousDatabase = string.Empty;
         private string _previousObjectType = string.Empty;
-        private int _userQueryCount = 0;
-        private bool _isInSearch = false;
-        private bool _isSearching = false;
-        private int _currentSearchIndex = 0;
+        private int _userQueryCount;
+        private bool _isInSearch;
+        private bool _isSearching;
+        private int _currentSearchIndex;
         private ServerInfo _currentServerInfo = new ServerInfo();
         private ServerInfo _previousServerInfo = new ServerInfo();
-        private MonitorItem _currentMonitorItem = null;
+        private MonitorItem _currentMonitorItem;
         private int _healthPrevColIndex = -1;
         private ListSortDirection _healthPrevSortDirection = ListSortDirection.Ascending;
         private int _analysisPrevColIndex = -1;
         private ListSortDirection _analysisPrevSortDirection = ListSortDirection.Ascending;
 
-        private static Monitor _instance = null;
+        private static Monitor _instance;
 
         internal static Monitor Instance
         {
@@ -182,7 +181,7 @@ namespace Xnlab.SQLMon.UI
 
             SetSearchMode(false);
 
-            this.Text += " " + Application.ProductVersion;
+            Text += " " + Application.ProductVersion;
 
             //crazy .net 4.0 will cause SEHException, damn it!
             //tcbPassword.TextBox.PasswordChar = '*';
@@ -361,7 +360,7 @@ namespace Xnlab.SQLMon.UI
 
         private void LoadServer(ServerInfo info)
         {
-            var state = new ServerState { AuthType = info.AuthType, Server = info.Server, Database = info.Database, User = info.User, Password = info.Password, IsReady = false, Key = KeyServer };
+            var state = new ServerState { IsAzure = info.IsAzure, AuthType = info.AuthType, Server = info.Server, Database = info.Database, User = info.User, Password = info.Password, IsReady = false, Key = KeyServer };
             var node = new TreeNode { Text = info.Server, Name = info.Server, ImageIndex = 0, SelectedImageIndex = 0, Tag = state };
             tvObjects.Nodes.Add(node);
             node.Nodes.Add(new TreeNode { Text = "Loading...", Tag = new ServerState { Key = KeyLoading } });
@@ -451,19 +450,20 @@ namespace Xnlab.SQLMon.UI
                                     var tcbActivityStatuses = FindCommand<ToolStripComboBox>(CommandActivityStatuses);
                                     var status = (ActivityStatuses)tcbActivityStatuses.SelectedItem;
                                     if (status != ActivityStatuses.All)
-                                        filter = " s.status = '" + status.ToString() + "'";
+                                        filter = " s.status = '" + status + "'";
                                     if (!string.IsNullOrEmpty(filter))
                                         filter = " AND " + filter;
                                     sql = QueryEngine.SqlProcesses + filter;
                                     break;
                                 case ActivityTypes.Job:
-                                    sql = QueryEngine.SqlJobs;
-                                    break;
-                                default:
+                                    if (_currentServerInfo.IsAzure)
+                                        sql = "SELECT 'NotSupported' AS Result";
+                                    else
+                                        sql = QueryEngine.SqlJobs;
                                     break;
                             }
                             var data = Query(sql);
-                            if (ActivitiesObjectType == ActivityTypes.Job)
+                            if (ActivitiesObjectType == ActivityTypes.Job && !_currentServerInfo.IsAzure)
                             {
                                 data.AsEnumerable().ForEach(d =>
                                     {
@@ -558,7 +558,7 @@ namespace Xnlab.SQLMon.UI
             return CurrentServerInfo != null && !string.IsNullOrEmpty(CurrentServerInfo.Server);
         }
 
-        private bool LoadServer(TreeNode Node)
+        private bool LoadServer(TreeNode node)
         {
             if (CheckCurrentServer())
             {
@@ -578,6 +578,8 @@ namespace Xnlab.SQLMon.UI
                             txtServerInstallationTime.Text = date.ToString();
                         }
                     }
+                    var serverState = node.Tag as ServerState;
+                    serverState.IsAzure = lines[0].IndexOf("Azure", StringComparison.InvariantCultureIgnoreCase) != -1;
                     txtVersion.Text = string.Join("\r\n", lines.ToArray());
 
                     try
@@ -590,7 +592,7 @@ namespace Xnlab.SQLMon.UI
                     {
                     }
 
-                    result = SqlHelper.ExecuteScalar("SELECT @@SERVICENAME", DefaultServerInfo);
+                    result = SqlHelper.ExecuteScalar(string.Format("SELECT {0}", serverState.IsAzure ? "@@SERVERNAME" : "@@SERVICENAME"), DefaultServerInfo);
                     var serviceName = result != null ? result.ToString() : "(N/A)";
                     txtServerInstanceName.Text = serviceName;
 
@@ -602,7 +604,7 @@ namespace Xnlab.SQLMon.UI
                     {
                         connection.Open();
                         var data = connection.GetSchema("Databases");
-                        Node.Nodes.Clear();
+                        node.Nodes.Clear();
                         var databases = GetDatabasesInfo();
                         data.AsEnumerable().OrderBy(r => r.Field<string>("database_name")).ForEach((d) =>
                         {
@@ -615,28 +617,32 @@ namespace Xnlab.SQLMon.UI
                                 var isReady = state != null && Convert.ToInt32(state["state"]) == 0;
                                 var image = isReady ? ImageIndexOnline : 0;
                                 var tag = new ServerState { Key = KeyDatabase, IsReady = false, State = isReady };
-                                var node = new TreeNode { Name = name, Text = name, ImageIndex = image, SelectedImageIndex = image, Tag = tag };
-                                Node.Nodes.Add(node);
+                                var databaseNode = new TreeNode { Name = name, Text = name, ImageIndex = image, SelectedImageIndex = image, Tag = tag };
+                                node.Nodes.Add(databaseNode);
                             }
                         });
-                        Node.Nodes.Cast<TreeNode>().ForEach((n) =>
+                        node.Nodes.Cast<TreeNode>().ForEach((n) =>
                         {
-                            n.Nodes.AddRange(new TreeNode[] { new TreeNode { Name = KeyTables, Text = "Tables", Tag = new ServerState { Key = KeyTables, IsReady = false } }
+                            n.Nodes.AddRange(new[] { new TreeNode { Name = KeyTables, Text = "Tables", Tag = new ServerState { Key = KeyTables, IsReady = false } }
                                 , new TreeNode { Name = KeyViews, Text = "Views", Tag = new ServerState { Key = KeyViews, IsReady = false } }
                                 , new TreeNode { Name = KeyFunctions, Text = "Functions", Tag = new ServerState { Key = KeyFunctions, IsReady = false } }
                                 , new TreeNode { Name = KeySPs, Text = "Stored Procedures", Tag = new ServerState { Key = KeySPs, IsReady = false } }
-                                , new TreeNode { Name = KeyAssemblies, Text = "Assemblies", Tag = new ServerState { Key = KeyAssemblies, IsReady = false } } 
+                                , new TreeNode { Name = KeyAssemblies, Text = "Assemblies", Tag = new ServerState { Key = KeyAssemblies, IsReady = false } }
                                 , new TreeNode { Name = KeyTriggers, Text = "Triggers", Tag = new ServerState { Key = KeyTriggers, IsReady = false } }   });
                             n.Nodes.Cast<TreeNode>().ForEach((m) => m.SelectedImageIndex = 1);
                         });
                         connection.Close();
                     }
                     //LoadDatabase(Node);
-                    var counts = Node.Nodes.Count;
+                    var counts = node.Nodes.Count;
                     lblObjectCount.Text = counts.ToString();
-                    if (counts == 1 && (Node.Nodes[0].Tag as ServerState).Key == KeyLoading)
+
+                    _currentServerInfo.IsAzure = serverState.IsAzure;
+                    ResetPerformance();
+
+                    if (counts == 1 && (node.Nodes[0].Tag as ServerState).Key == KeyLoading)
                     {
-                        Node.Collapse();
+                        node.Collapse();
                         return false;
                     }
                     else
@@ -644,14 +650,14 @@ namespace Xnlab.SQLMon.UI
                 }
                 catch (Exception ex)
                 {
-                    Node.Collapse();
+                    node.Collapse();
                     ShowError(ex);
                     return false;
                 }
             }
             else
             {
-                Node.Collapse();
+                node.Collapse();
                 return false;
             }
         }
@@ -1174,7 +1180,7 @@ namespace Xnlab.SQLMon.UI
 
         private void ShowObjects(object e)
         {
-            this.BeginInvoke(new MethodInvoker(delegate()
+            this.BeginInvoke(new MethodInvoker(delegate ()
             {
                 var arg = e as TreeViewCancelEventArgs;
                 var state = arg.Node.Tag as ServerState;
@@ -2291,7 +2297,7 @@ WHERE o.name = '" + parsedObjectName + "' AND u.name = '" + schemaName + "'" +
                             SetActivityType(ActivityTypes.Job);
                             RefreshData();
                         });
-                    var command = AddCommand<ActivityStatuses>(CommandActivityStatuses, Settings.Instance.ActivityState);
+                    var command = AddCommand(CommandActivityStatuses, Settings.Instance.ActivityState);
                     AddCommand(CommandVisualize, "Visualize", Resources.Gear2, false, OnVisualizeProcessClick);
                     AddCommand(CommandDelete, "Kill", Resources.Cross2, false, OnKillProcessClick);
                     switch (Settings.Instance.ActivityType)
@@ -3107,7 +3113,7 @@ ORDER BY D.index_handle, D.statement";
                                                                     || l.StartsWith("rollback"))
                                                                     transactionPairCount++;
 
-                                                                    //found open cursor
+                                                                //found open cursor
                                                                 else if (l.StartsWith(openCursor))
                                                                 {
                                                                     objectName = l.Substring(openCursor.Length - 1).ParseObjectName();
@@ -4156,10 +4162,10 @@ order by highest_cpu_queries.total_worker_time desc";
 
         private void OnRunManagementStudioClick(object sender, EventArgs e)
         {
-            var paths = new string[] { @"Microsoft SQL Server\120\Tools\Binn\ManagementStudio\", 
-                                       @"Microsoft SQL Server\110\Tools\Binn\ManagementStudio\", 
-                                       @"Microsoft SQL Server\100\Tools\Binn\VSShell\Common7\IDE\", 
-                                       @"Microsoft SQL Server\90\Tools\Binn\VSShell\Common7\IDE\", 
+            var paths = new string[] { @"Microsoft SQL Server\120\Tools\Binn\ManagementStudio\",
+                                       @"Microsoft SQL Server\110\Tools\Binn\ManagementStudio\",
+                                       @"Microsoft SQL Server\100\Tools\Binn\VSShell\Common7\IDE\",
+                                       @"Microsoft SQL Server\90\Tools\Binn\VSShell\Common7\IDE\",
                                        @"Microsoft SQL Server\80\Tools\Binn\VSShell\Common7\IDE\"};
 
             var result = paths.Select(p =>

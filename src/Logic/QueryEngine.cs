@@ -16,7 +16,7 @@ namespace Xnlab.SQLMon.Logic
         internal const string DefaultSchema = "dbo";
         internal const string SqlWaitingTasks = "SELECT session_id AS [Session Id], exec_context_id AS [Exec Context Id], wait_duration_ms AS [Wait Duration ms], wait_type AS [Wait Type], blocking_session_id AS [Blocking Session Id], blocking_exec_context_id AS [Blocking Exec Context Id], resource_description AS [Resource Description] FROM sys.dm_os_waiting_tasks WITH (NOLOCK)";
         internal const string SqlProcesses = "SELECT s.session_id AS spid, s.login_time, s.host_name AS hostname, s.host_process_id AS hostprocess, s.login_name AS loginname, CASE WHEN (s.reads + s.writes) = 0 AND r.reads IS NOT NULL THEN (r.reads + r.writes) ELSE (s.reads + s.writes) END AS physical_io, CASE WHEN s.cpu_time = 0 AND r.cpu_time IS NOT NULL THEN r.cpu_time ELSE s.cpu_time END AS cpu, s.program_name, DB_NAME(r.database_id) AS db, s.last_request_start_time AS last_batch_begin, CASE WHEN s.status = 'running' THEN GETDATE() ELSE dateadd(ms, s.cpu_time, s.last_request_end_time) END AS last_batch_end, s.status, CASE WHEN r.blocking_session_id <> 0 THEN -1 ELSE (CASE WHEN s.status = 'running' THEN 1 ELSE 0 END) END AS enabled, CASE WHEN r.percent_complete IS NULL THEN 0 ELSE r.percent_complete END AS percent_complete, r.blocking_session_id FROM sys.dm_exec_sessions s WITH (NOLOCK) LEFT JOIN sys.dm_exec_requests r WITH (NOLOCK) ON s.session_id = r.session_id WHERE s.is_user_process = 1";
-        internal const string SqlJobs = "SELECT j.job_id AS spid, j.name AS program_name, CAST(a.last_executed_step_id AS nvarchar(10)) AS dbid, 0 AS cpu, 0 AS physical_io, NULL AS login_time, a.start_execution_date AS last_batch_begin, a.stop_execution_date AS last_batch_end, CASE Enabled WHEN 1 THEN 'Enabled' ELSE 'Disabled' END AS status, @@SERVICENAME AS hostname, @@SPID AS hostprocess, NULL AS cmd, SYSTEM_USER AS loginname, enabled, 0 AS percent_complete FROM msdb.dbo.sysjobs j WITH (NOLOCK) LEFT JOIN msdb.dbo.sysjobactivity a WITH (NOLOCK) on j.job_id = a.job_id WHERE (a.session_id = (SELECT max(session_id) FROM msdb.dbo.sysjobactivity WITH (NOLOCK) WHERE job_id = j.job_id AND start_execution_date IS NOT NULL)) ORDER BY program_name";
+        internal const string SqlJobs = "SELECT j.job_id AS spid, j.name AS program_name, CAST(a.last_executed_step_id AS nvarchar(10)) AS dbid, 0 AS cpu, 0 AS physical_io, NULL AS login_time, a.start_execution_date AS last_batch_begin, a.stop_execution_date AS last_batch_end, CASE Enabled WHEN 1 THEN 'Enabled' ELSE 'Disabled' END AS status, @@SERVERNAME AS hostname, @@SPID AS hostprocess, NULL AS cmd, SYSTEM_USER AS loginname, enabled, 0 AS percent_complete FROM msdb.dbo.sysjobs j WITH (NOLOCK) LEFT JOIN msdb.dbo.sysjobactivity a WITH (NOLOCK) on j.job_id = a.job_id WHERE (a.session_id = (SELECT max(session_id) FROM msdb.dbo.sysjobactivity WITH (NOLOCK) WHERE job_id = j.job_id AND start_execution_date IS NOT NULL)) ORDER BY program_name";
         internal const string SqlLockedObjects = @"SELECT l.request_session_id AS SPID, s.program_name AS ProgramName, DB_NAME(l.resource_database_id) AS DatabaseName, schema_name(o.schema_id) AS SchemaName, o.name AS ObjectName FROM master.sys.dm_tran_locks l
 LEFT JOIN sys.all_objects o ON o.object_id = l.resource_associated_entity_id
 LEFT JOIN sys.dm_exec_sessions s ON l.request_session_id = s.session_id
@@ -194,7 +194,13 @@ ORDER BY su.name, so.name";
 
         internal static DataTable GetDatabaseInfo(ServerInfo server, string database)
         {
-            return SqlHelper.Query("SELECT DB_NAME(database_id) AS DatabaseName, Name AS Logical_Name, Physical_Name, CAST(size AS decimal(30,0))*8 AS Size, state, type FROM sys.master_files WITH (NOLOCK) WHERE DB_NAME(database_id) = '" + database + "'", server);
+            if (server.IsAzure)
+            {
+                server.Database = database;
+                return SqlHelper.Query(string.Format("SELECT '{0}' AS DatabaseName, Name AS Logical_Name, Physical_Name, CAST(size AS decimal(30,0))*8 AS Size, state, type FROM sys.database_files", database), server);
+            }
+            else
+                return SqlHelper.Query("SELECT DB_NAME(database_id) AS DatabaseName, Name AS Logical_Name, Physical_Name, CAST(size AS decimal(30,0))*8 AS Size, state, type FROM sys.master_files WITH (NOLOCK) WHERE DB_NAME(database_id) = '" + database + "'", server);
         }
 
         internal static DataTable GetDatabasesInfo(ServerInfo server)
@@ -219,13 +225,16 @@ ORDER BY su.name, so.name";
                 }
             });
             var spaces = new Dictionary<string, KeyValue<long, long>>();
-            //MB free
-            var driveSpaces = SqlHelper.Query("EXEC master.sys.xp_fixeddrives", server);
-            driveSpaces.AsEnumerable().ForEach(s =>
+            if (!server.IsAzure)
             {
-                //could not use name but rather index, because the column name will change according to locale
-                spaces.Add(s[0].ToString(), new KeyValue<long, long>(Convert.ToInt64(s[1]), 0));
-            });
+                //MB free
+                var driveSpaces = SqlHelper.Query("EXEC master.sys.xp_fixeddrives", server);
+                driveSpaces.AsEnumerable().ForEach(s =>
+                {
+                    //could not use name but rather index, because the column name will change according to locale
+                    spaces.Add(s[0].ToString(), new KeyValue<long, long>(Convert.ToInt64(s[1]), 0));
+                });
+            }
             files.ForEach(f =>
             {
                 var drive = f.Item2.Substring(0, 1);
@@ -255,7 +264,8 @@ ORDER BY su.name, so.name";
                         database.AsEnumerable().ForEach(f =>
                         {
                             var key = (DatabaseFileTypes)Convert.ToInt32(f["type"]);
-                            databaseSpace[key] += Convert.ToInt64(Convert.ToDecimal(f["Size"]) / Utils.Size1K);
+                            if (databaseSpace.ContainsKey(key))
+                                databaseSpace[key] += Convert.ToInt64(Convert.ToDecimal(f["Size"]) / Utils.Size1K);
                         }
                         );
                         bool? shrink = null;
@@ -285,7 +295,7 @@ ORDER BY su.name, so.name";
 
         internal static ServerInfo GetServerInfo(ServerInfo server, string catalog)
         {
-            return new ServerInfo { AuthType = server.AuthType, Server = server.Server, Database = catalog, User = server.User, Password = server.Password };
+            return new ServerInfo { IsAzure = server.IsAzure, AuthType = server.AuthType, Server = server.Server, Database = catalog, User = server.User, Password = server.Password };
         }
 
         internal static List<DatabaseStall> GetDatabaseStall(ServerInfo server)
@@ -389,14 +399,15 @@ order by record_id desc";
             var data = SqlHelper.Query("dbcc INPUTBUFFER(" + sessionId + ")", server);
             var sql = data != null && data.Rows.Count > 0 ? (data.Rows[0][2] as string) : string.Empty;
             sql = !string.IsNullOrEmpty(sql) ? sql.Replace("\0", string.Empty) : string.Empty;
-            data = SqlHelper.Query(@"declare @s nvarchar(max)
+            if (!server.IsAzure)
+            {
+                data = SqlHelper.Query(@"declare @s nvarchar(max)
 declare @handle binary(20)
 declare @start int
 declare @end int
 select @handle = sql_handle,@start = stmt_start, @end = stmt_end from sys.sysprocesses where spid=" + sessionId + @"
 select @s = text FROM sys.dm_exec_sql_text( @handle )
 select @s as FullStatement, SUBSTRING(@s, (@start/2)+1, ((CASE @end WHEN -1 THEN DATALENGTH(@s) ELSE @end END - @start)/2)+1) as CurrentStatement", server);
-            {
                 if (data.Rows.Count > 0)
                 {
                     sql = sql.Trim();
@@ -424,10 +435,15 @@ select @s as FullStatement, SUBSTRING(@s, (@start/2)+1, ((CASE @end WHEN -1 THEN
 
         internal static DataTable GetDatabaseIoInfo(ServerInfo server)
         {
-            var dataFiles = SqlHelper.Query(string.Format(@"SELECT sys.databases.database_id AS dbid, sys.master_files.file_id AS fileid, sys.master_files.physical_name AS filename
+            string sql;
+            if (server.IsAzure)
+                sql = "SELECT DB_ID() AS dbid, file_id AS fileid, physical_name AS filename FROM sys.database_files";
+            else
+                sql = string.Format(@"SELECT sys.databases.database_id AS dbid, sys.master_files.file_id AS fileid, sys.master_files.physical_name AS filename
 FROM sys.master_files INNER JOIN sys.databases 
 ON sys.master_files.database_id = sys.databases.database_id 
-WHERE sys.databases.name = '{0}'", server.Database), server);
+WHERE sys.databases.name = '{0}'", server.Database);
+            var dataFiles = SqlHelper.Query(sql, server);
             var data = new DataTable();
             data.Columns.Add("StartDate", typeof(DateTime));
             data.Columns.Add("IsStall", typeof(double));

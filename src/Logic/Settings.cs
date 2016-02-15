@@ -93,6 +93,7 @@ namespace Xnlab.SQLMon.Logic
         public bool IsEncrypted { get; set; }
         public string Server { get; set; }
         public string Database { get; set; }
+        internal bool IsAzure { get; set; }
 
         public ServerInfo()
         {
@@ -106,7 +107,7 @@ namespace Xnlab.SQLMon.Logic
 
         public ServerInfo Clone()
         {
-            return new ServerInfo { Server = this.Server, AuthType = this.AuthType, Database = this.Database, User = this.User, Password = this.Password, IsEncrypted = this.IsEncrypted };
+            return new ServerInfo { IsAzure = this.IsAzure, Server = this.Server, AuthType = this.AuthType, Database = this.Database, User = this.User, Password = this.Password, IsEncrypted = this.IsEncrypted };
         }
     }
 
@@ -358,7 +359,7 @@ namespace Xnlab.SQLMon.Logic
             if (File.Exists(SettingsFile))
                 File.Delete(SettingsFile);
             var serializer = new XmlSerializer(typeof(Settings));
-            var settings = Utils.CloneObject<Settings>(this);
+            var settings = Utils.CloneObject(this);
             using (var writer = File.OpenWrite(SettingsFile))
             {
                 settings.Servers.ForEach(s =>

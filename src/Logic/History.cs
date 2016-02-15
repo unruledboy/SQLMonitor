@@ -152,7 +152,7 @@ namespace Xnlab.SQLMon.Logic
                         var historyCount = historyFormatter.Count;
                         records.ForEach(r =>
                         {
-                            historyFormatter.Serialize<HistoryRecord>(r);
+                            historyFormatter.Serialize(r);
                         });
 
                         historyFormatter.Flush();
@@ -180,18 +180,18 @@ namespace Xnlab.SQLMon.Logic
                                 if (!foundYesterday)
                                 {
                                     dateFormatter.MoveToEnd();
-                                    dateFormatter.Serialize<HistoryDate>(new HistoryDate { Date = yesterday.ToString(), Index = historyCount });
+                                    dateFormatter.Serialize(new HistoryDate { Date = yesterday.ToString(), Index = historyCount });
                                 }
 
                                 if (todayIndex != -1)
                                 {
                                     dateFormatter.MoveTo(todayIndex);
-                                    dateFormatter.Serialize<HistoryDate>(new HistoryDate { Date = today.ToString(), Index = historyFormatter.Count }, true);
+                                    dateFormatter.Serialize(new HistoryDate { Date = today.ToString(), Index = historyFormatter.Count }, true);
                                 }
                                 else
                                 {
                                     dateFormatter.MoveToEnd();
-                                    dateFormatter.Serialize<HistoryDate>(new HistoryDate { Date = today.ToString(), Index = historyFormatter.Count });
+                                    dateFormatter.Serialize(new HistoryDate { Date = today.ToString(), Index = historyFormatter.Count });
                                 }
 
                                 dateFormatter.Flush();

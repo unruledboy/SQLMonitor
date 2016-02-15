@@ -192,7 +192,14 @@ namespace Xnlab.SQLMon.Logic
                         //memory
                         long physicalMemory;
                         long availableMemory;
-                        QueryEngine.GetMemoryInfo(e.Server, out physicalMemory, out availableMemory);
+                        var serverState = e.Server as ServerState;
+                        if (!serverState.IsAzure)
+                            QueryEngine.GetMemoryInfo(e.Server, out physicalMemory, out availableMemory);
+                        else
+                        {
+                            physicalMemory = 0;
+                            availableMemory = 0;
+                        }
                         var memoryMb = SqlHelper.ExecuteScalar("SELECT (cntr_value/1024.0) FROM sys.dm_os_performance_counters WHERE counter_name = 'Total Server Memory (KB)'", e.Server);
                         if (memoryMb != null)
                         {
@@ -217,13 +224,16 @@ namespace Xnlab.SQLMon.Logic
                             healthItems.Add(new HealthItem { Category = HealthCategoryServer, HealthType = HealthTypes.ServerSpace, CurrentValue = s.Value.Key.ToString() + " " + Utils.SizeMb, ReferenceValue = s.Value.Value + " " + Utils.SizeMb, ItemName = "Disk Space (" + s.Key + ")", Description = "Free/DB Used", IsAlert = isAlert });
                         });
 
-                        //locked objects
-                        var lockedObjects = SqlHelper.Query(QueryEngine.SqlLockedObjects, e.Server);
-                        lockedObjects.Rows.Cast<DataRow>().ForEach(r =>
+                        if (!e.Server.IsAzure)
+                        {
+                            //locked objects
+                            var lockedObjects = SqlHelper.Query(QueryEngine.SqlLockedObjects, e.Server);
+                            lockedObjects.Rows.Cast<DataRow>().ForEach(r =>
                             {
                                 isAlert = false;
                                 healthItems.Add(new HealthItem { Category = HealthCategoryProcess, HealthType = HealthTypes.LockedObjects, CurrentValue = r.Field<string>("SchemaName") + "." + r.Field<string>("ObjectName"), ReferenceValue = r.Field<string>("DatabaseName"), ItemName = "Locked Object", Description = r.Field<string>("ProgramName"), IsAlert = isAlert });
                             });
+                        }
 
                         //blocked processes
                         var blockedProcesses = SqlHelper.Query(QueryEngine.SqlWaitingTasks + " WHERE blocking_session_id IS NOT NULL", e.Server);
@@ -374,6 +384,9 @@ namespace Xnlab.SQLMon.Logic
 
         private void CheckPerformanceItem(ServerInfo server, bool isServer)
         {
+            if (server.IsAzure)
+                return;
+
             PerformanceRecord record;
             if (isServer)
             {
