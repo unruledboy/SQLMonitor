@@ -8,6 +8,8 @@ https://github.com/unruledboy/DatabaseStack
 # SQL Monitor
 SQL Server monitor, manages sql server performance, monitor sql server processes and jobs, analyze performance, analyse system, object version control, view executing sql query, kill process / job, object explorer, database shrink/log truncate/backup/detach/attach.
 
+Latest version executable download: https://raw.githubusercontent.com/unruledboy/SQLMonitor/master/SQLMonitor.bin.zip
+
 
 ![Image of SQL Monitor](https://raw.githubusercontent.com/unruledboy/SQLMonitor/master/images/1.png)
 
