@@ -3487,7 +3487,7 @@ order by highest_cpu_queries.total_worker_time desc";
                         case AnalysisTypes.IndexUsage:
                         case AnalysisTypes.Performance:
                         case AnalysisTypes.LogicFault:
-                            text = dgvAnalysis.Rows[e.RowIndex].Cells["Suggestion"].Value.ToString();
+                            text = dgvAnalysis.Rows[e.RowIndex].Cells["Suggestion"].Value?.ToString();
                             break;
                         case AnalysisTypes.LockedObjects:
                             var spid = dgvAnalysis.Rows[e.RowIndex].Cells["SPID"].Value;

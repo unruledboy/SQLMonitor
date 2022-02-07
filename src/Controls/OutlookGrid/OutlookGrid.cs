@@ -135,6 +135,9 @@ namespace Xnlab.SQLMon.Controls.OutlookGrid
         
         public override void Sort(DataGridViewColumn dataGridViewColumn, ListSortDirection direction)
         {
+            if (dataGridViewColumn == null)
+                return;
+
             if (_dataSource == null) // if no datasource is set, then bind to the grid itself
                 _dataSource = new DataSourceManager(this, null);
 
