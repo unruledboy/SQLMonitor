@@ -190,17 +190,26 @@ namespace Xnlab.SQLMon.Logic
                         var isAlert = false;
 
                         //memory
-                        long physicalMemory;
-                        long availableMemory;
+                        long physicalMemory = 0;
+                        long availableMemory = 0;
                         var serverState = e.Server as ServerState;
                         if (!serverState.IsAzure)
-                            QueryEngine.GetMemoryInfo(e.Server, out physicalMemory, out availableMemory);
-                        else
+                            try
+                            {
+                                QueryEngine.GetMemoryInfo(e.Server, out physicalMemory, out availableMemory);
+                            }
+                            catch(SqlException err) when (err.Number == 300)
+                            {
+                                // VIEW SERVER STATE permission was denied
+                            }
+                        object memoryMb = null;
+                        try
                         {
-                            physicalMemory = 0;
-                            availableMemory = 0;
+                            memoryMb = SqlHelper.ExecuteScalar("SELECT (cntr_value/1024.0) FROM sys.dm_os_performance_counters WHERE counter_name = 'Total Server Memory (KB)'", e.Server);
                         }
-                        var memoryMb = SqlHelper.ExecuteScalar("SELECT (cntr_value/1024.0) FROM sys.dm_os_performance_counters WHERE counter_name = 'Total Server Memory (KB)'", e.Server);
+                        catch (SqlException err) when (err.Number == 300)
+                        {
+                        }
                         if (memoryMb != null)
                         {
                             var memory = Convert.ToInt32(memoryMb);
@@ -209,15 +218,30 @@ namespace Xnlab.SQLMon.Logic
                         }
 
                         //cpu
-                        int cpuSqlProcess;
-                        int cpuSystemIdle;
-                        int cpuOtherProcesses;
-                        QueryEngine.GetCpuInfo(e.Server, out cpuSqlProcess, out cpuSystemIdle, out cpuOtherProcesses);
+                        int cpuSqlProcess = 0;
+                        int cpuSystemIdle = 0;
+                        int cpuOtherProcesses = 0;
+                        try
+                        {
+                            QueryEngine.GetCpuInfo(e.Server, out cpuSqlProcess, out cpuSystemIdle, out cpuOtherProcesses);
+                        }
+                        catch (SqlException err) when (err.Number == 300)
+                        {
+                        }
                         isAlert = cpuSystemIdle < Settings.Instance.FreeCpuRatio;
                         healthItems.Add(new HealthItem { Category = HealthCategoryServer, HealthType = HealthTypes.ServerCpu, CurrentValue = cpuSystemIdle.ToString() + " %", ReferenceValue = cpuSqlProcess + " %", ItemName = "Server CPU", Description = "Free/DB Used", IsAlert = isAlert });
 
                         //disk space
-                        var diskSpaces = QueryEngine.GetDiskSpace(e.Server);
+                        var diskSpaces = new Dictionary<string, KeyValue<long, long>>();
+                        try
+                        {
+                            diskSpaces = QueryEngine.GetDiskSpace(e.Server);
+
+                        }
+                        catch (SqlException err) when (err.Number == 229)
+                        {
+                            // The EXECUTE permission was denied on the object 'xp_fixeddrives', database 'mssqlsystemresource', schema 'sys'.
+                        }
                         diskSpaces.Where(s => s.Value.Value > 0).ForEach(s =>
                         {
                             isAlert = s.Value.Key < s.Value.Value / 100 * Settings.Instance.DatabaseDiskFreeSpaceRatio;
@@ -227,7 +251,14 @@ namespace Xnlab.SQLMon.Logic
                         if (!e.Server.IsAzure)
                         {
                             //locked objects
-                            var lockedObjects = SqlHelper.Query(QueryEngine.SqlLockedObjects, e.Server);
+                            DataTable lockedObjects = new DataTable();
+                            try
+                            {
+                                lockedObjects = SqlHelper.Query(QueryEngine.SqlLockedObjects, e.Server);
+                            }
+                            catch (SqlException err) when (err.Number == 300)
+                            {
+                            }
                             lockedObjects.Rows.Cast<DataRow>().ForEach(r =>
                             {
                                 isAlert = false;
@@ -236,7 +267,14 @@ namespace Xnlab.SQLMon.Logic
                         }
 
                         //blocked processes
-                        var blockedProcesses = SqlHelper.Query(QueryEngine.SqlWaitingTasks + " WHERE blocking_session_id IS NOT NULL", e.Server);
+                        var blockedProcesses = new DataTable();
+                        try
+                        {
+                            blockedProcesses = SqlHelper.Query(QueryEngine.SqlWaitingTasks + " WHERE blocking_session_id IS NOT NULL", e.Server);
+                        }
+                        catch (SqlException err) when (err.Number == 300)
+                        {
+                        }
                         blockedProcesses.Rows.Cast<DataRow>().ForEach(r =>
                         {
                             isAlert = true;
@@ -252,7 +290,15 @@ namespace Xnlab.SQLMon.Logic
                         });
 
                         //db/log space
-                        var dbLogSpaces = QueryEngine.GetDbLogSpace(e.Server);
+                        var dbLogSpaces = new Dictionary<string, Tuple<long, long, bool>>();
+                        try
+                        {
+                            dbLogSpaces = QueryEngine.GetDbLogSpace(e.Server);
+                        }
+                        catch(SqlException err) when (err.Number == 297)
+                        {
+                            // The user does not have permission to perform this action.
+                        }
                         dbLogSpaces.Where(s => !s.Value.Item3).ForEach(s =>
                         {
                             healthItems.Add(new HealthItem { Category = HealthCategoryDatabase, HealthType = HealthTypes.DatabaseLogSpace, CurrentValue = s.Value.Item1.ToString() + " " + Utils.SizeMb, ReferenceValue = s.Value.Item2 + " " + Utils.SizeMb, ItemName = "DB/Log Space (" + s.Key + ")", Description = "Log/DB", IsAlert = true });
