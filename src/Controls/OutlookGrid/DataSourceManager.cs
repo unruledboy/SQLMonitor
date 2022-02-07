@@ -77,6 +77,9 @@ namespace Xnlab.SQLMon.Controls.OutlookGrid
 
         public int Add(object val)
         {
+            if (val == null)
+                return -1;
+
             return List.Add(val);
         }
 
