@@ -1656,7 +1656,7 @@ GO
 ENABLE TRIGGER [{1}] ON DATABASE
 GO
 ", Settings.Instance.VersionControlTableName, Settings.Instance.VersionControlTriggerName);
-                        var statements = sql.Split(new string[] { "GO\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                        var statements = sql.Split(new string[] { "GO\r\n", "GO\n" }, StringSplitOptions.RemoveEmptyEntries);
                         statements.ForEach(s => SqlHelper.ExecuteNonQuery(s, CurrentServerInfo));
                     }
                 }
